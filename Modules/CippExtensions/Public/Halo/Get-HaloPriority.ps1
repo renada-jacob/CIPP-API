@@ -33,7 +33,7 @@ function Get-HaloPriority {
 
         # Halo's /tickettype/{id} response uses different field names for the linked SLA across
         # versions. Check the known variants in priority order, take the first non-zero match.
-        $SlaIdCandidates = @('default_sla_id', 'sla_id', 'slaid', 'sla')
+        $SlaIdCandidates = @('default_sla', 'default_sla_id', 'sla_id', 'slaid', 'sla')
         $SlaId = $null
         foreach ($Field in $SlaIdCandidates) {
             $Value = $TicketTypeRecord.$Field
