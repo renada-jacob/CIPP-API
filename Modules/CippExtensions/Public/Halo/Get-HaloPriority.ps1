@@ -30,11 +30,24 @@ function Get-HaloPriority {
 
         $Headers = @{ Authorization = "Bearer $($Token.access_token)" }
         $TicketTypeRecord = Invoke-RestMethod -Uri "$($Configuration.ResourceURL)/tickettype/$TicketType" -ContentType 'application/json' -Method GET -Headers $Headers
-        $SlaId = $TicketTypeRecord.sla_id
 
-        if (-not $SlaId -or $SlaId -le 0) {
+        # Halo's /tickettype/{id} response uses different field names for the linked SLA across
+        # versions. Check the known variants in priority order, take the first non-zero match.
+        $SlaIdCandidates = @('default_sla_id', 'sla_id', 'slaid', 'sla')
+        $SlaId = $null
+        foreach ($Field in $SlaIdCandidates) {
+            $Value = $TicketTypeRecord.$Field
+            if ($Value -and ([int]$Value) -gt 0) {
+                $SlaId = [int]$Value
+                break
+            }
+        }
+
+        if (-not $SlaId) {
+            $InspectedFields = ($TicketTypeRecord.PSObject.Properties.Name | Where-Object { $_ -match 'sla' }) -join ', '
+            $Hint = if ($InspectedFields) { "Inspected SLA-shaped fields: $InspectedFields" } else { 'No SLA-shaped fields present on the ticket type response' }
             return @(@{
-                    name  = 'The selected Ticket Type has no SLA attached, so no priorities are restricted to it'
+                    name  = "The selected Ticket Type has no SLA attached, so no priorities are restricted to it. $Hint"
                     value = -1
                 })
         }
