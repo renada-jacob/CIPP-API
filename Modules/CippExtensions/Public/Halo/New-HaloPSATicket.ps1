@@ -48,14 +48,18 @@ function New-HaloPSATicket {
           Write-Information 'Ticket is still open, adding new note'
           $Object = [PSCustomObject]@{
             ticket_id      = $ExistingTicket.TicketID
-            outcome_id     = 7
             hiddenfromuser = $true
             note_html      = $description
           }
-  
+
+          # outcome_id was previously hardcoded to 7. That ID is auto-assigned per Halo install,
+          # so on instances where 7 doesn't exist (or the API user can't use it) the note POST
+          # failed with "You do not have access to this Action at the moment." and the alert was
+          # lost. Now: only set outcome_id when the admin has configured one for this integration;
+          # otherwise omit the field and let Halo's workflow apply its own default action.
           if ($Configuration.Outcome) {
             $Outcome = $Configuration.Outcome.value ?? $Configuration.Outcome
-            $Object.outcome_id = $Outcome
+            $Object | Add-Member -MemberType NoteProperty -Name 'outcome_id' -Value $Outcome -Force
           }
   
           $body = ConvertTo-Json -Compress -Depth 10 -InputObject @($Object)
