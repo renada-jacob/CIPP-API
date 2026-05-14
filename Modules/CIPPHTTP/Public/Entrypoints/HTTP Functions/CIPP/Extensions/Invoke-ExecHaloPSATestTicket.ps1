@@ -20,13 +20,15 @@ Function Invoke-ExecHaloPSATestTicket {
             $Results = [pscustomobject]@{ Results = 'HaloPSA integration is not enabled. Save the integration with Enable Integration ticked, then try again.' }
         } else {
             # Pick the first mapped tenant's Halo client id so the test ticket lands on a real
-            # client. Falls back to 1 (the same default the alert pipeline uses) if no mappings
-            # exist - admins should set up Tenant Mapping for a more representative test.
+            # client. Filters to mappings whose IntegrationId is numeric (Halo client ids are
+            # always integers); legacy or cross-integration rows with GUID-shaped IntegrationIds
+            # are skipped instead of crashing the cast. Falls back to 1 (the same default the
+            # alert pipeline uses) if no usable mapping exists.
             $MappingTable = Get-CIPPTable -TableName CippMapping
             $Mappings = Get-CIPPAzDataTableEntity @MappingTable -Filter "PartitionKey eq 'HaloMapping'"
-            $Mapping = $Mappings | Where-Object { $_.IntegrationId } | Select-Object -First 1
+            $Mapping = $Mappings | Where-Object { $_.IntegrationId -and (($_.IntegrationId -as [int]) -gt 0) } | Select-Object -First 1
             $ClientId = if ($Mapping) { [int]$Mapping.IntegrationId } else { 1 }
-            $ClientName = if ($Mapping) { $Mapping.IntegrationName } else { 'Default Client (no Tenant Mapping configured)' }
+            $ClientName = if ($Mapping) { $Mapping.IntegrationName } else { 'Default Client (no numeric Tenant Mapping found)' }
 
             $Timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ssZ')
             $Title = 'Test ticket from CIPP integration'
