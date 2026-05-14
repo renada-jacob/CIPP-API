@@ -1,11 +1,17 @@
 function Get-HaloPriority {
     <#
     .SYNOPSIS
-        Get HaloPSA Priorities for use in the integration UI dropdown.
+        Get HaloPSA Priorities for use in the integration UI dropdown, restricted to the SLA
+        attached to the configured Ticket Type so admins can only pick a priority that the
+        ticket would actually be allowed to use.
     .DESCRIPTION
-        Returns the list of priorities defined in the linked HaloPSA instance, sorted by their
-        priority order. Used to populate the DefaultPriority autoComplete on the integration
-        settings page so admins can pick which priority CIPP-generated tickets are created with.
+        HaloPSA priorities only have meaningful effect within the SLA they belong to (response
+        and resolution targets are defined per priority per SLA). Returning all priorities lets
+        admins pick one that doesn't apply to the chosen Ticket Type, producing tickets that
+        either reject the priority outright or fall back to the SLA default with no warning.
+
+        Pattern mirrors Get-HaloTicketOutcome: requires Ticket Type to be saved first, then
+        looks up the ticket type's sla_id, then returns the priorities tied to that SLA.
     #>
     [CmdletBinding()]
     param ()
@@ -13,9 +19,48 @@ function Get-HaloPriority {
     try {
         $Configuration = ((Get-CIPPAzDataTableEntity @Table).config | ConvertFrom-Json -ea stop).HaloPSA
         $Token = Get-HaloToken -configuration $Configuration
+        $TicketType = $Configuration.TicketType.value ?? $Configuration.TicketType
 
-        $Priorities = Invoke-RestMethod -Uri "$($Configuration.ResourceURL)/Priority" -ContentType 'application/json' -Method GET -Headers @{Authorization = "Bearer $($Token.access_token)" }
-        $Priorities | Sort-Object -Property priorityorder, name
+        if (-not $TicketType) {
+            return @(@{
+                    name  = 'Select and save a Ticket Type first to see available priorities'
+                    value = -1
+                })
+        }
+
+        $Headers = @{ Authorization = "Bearer $($Token.access_token)" }
+        $TicketTypeRecord = Invoke-RestMethod -Uri "$($Configuration.ResourceURL)/tickettype/$TicketType" -ContentType 'application/json' -Method GET -Headers $Headers
+        $SlaId = $TicketTypeRecord.sla_id
+
+        if (-not $SlaId -or $SlaId -le 0) {
+            return @(@{
+                    name  = 'The selected Ticket Type has no SLA attached, so no priorities are restricted to it'
+                    value = -1
+                })
+        }
+
+        # The /SLA/{id} response shape varies between Halo versions: some return full priority
+        # objects under .priorities, some only IDs. Resolve both by fetching the canonical
+        # priority list and filtering by ID, which works regardless of the SLA payload shape.
+        $Sla = Invoke-RestMethod -Uri "$($Configuration.ResourceURL)/SLA/$SlaId" -ContentType 'application/json' -Method GET -Headers $Headers
+
+        $SlaPriorityIds = @()
+        if ($Sla.priorities) {
+            $SlaPriorityIds = foreach ($p in $Sla.priorities) {
+                if ($p.id) { $p.id } else { $p }
+            }
+        }
+
+        $AllPriorities = Invoke-RestMethod -Uri "$($Configuration.ResourceURL)/Priority" -ContentType 'application/json' -Method GET -Headers $Headers
+
+        if ($SlaPriorityIds.Count -gt 0) {
+            $AllPriorities | Where-Object { $_.id -in $SlaPriorityIds } | Sort-Object -Property priorityorder, name
+        } else {
+            # SLA exists but doesn't expose a priority list - return all priorities as a fallback
+            # so the dropdown isn't empty, with a leading hint row.
+            @(@{ name = '(SLA returned no priority list - showing all priorities)'; value = -1 }) +
+                ($AllPriorities | Sort-Object -Property priorityorder, name)
+        }
     } catch {
         $Message = if ($_.ErrorDetails.Message) {
             Get-NormalizedError -Message $_.ErrorDetails.Message
