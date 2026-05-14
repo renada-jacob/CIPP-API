@@ -24,7 +24,7 @@ function Get-HaloPriority {
         if (-not $TicketType) {
             return @(@{
                     name  = 'Select and save a Ticket Type first to see available priorities'
-                    id    = -1
+                    priorityid = -1
                 })
         }
 
@@ -48,7 +48,7 @@ function Get-HaloPriority {
             $Hint = if ($InspectedFields) { "Inspected SLA-shaped fields: $InspectedFields" } else { 'No SLA-shaped fields present on the ticket type response' }
             return @(@{
                     name  = "The selected Ticket Type has no SLA attached, so no priorities are restricted to it. $Hint"
-                    id    = -1
+                    priorityid = -1
                 })
         }
 
@@ -71,7 +71,7 @@ function Get-HaloPriority {
         } else {
             # SLA exists but doesn't expose a priority list - return all priorities as a fallback
             # so the dropdown isn't empty, with a leading hint row.
-            @(@{ name = '(SLA returned no priority list - showing all priorities)'; id = -1 }) +
+            @(@{ name = '(SLA returned no priority list - showing all priorities)'; priorityid = -1 }) +
                 ($AllPriorities | Sort-Object -Property priorityorder, name)
         }
     } catch {
