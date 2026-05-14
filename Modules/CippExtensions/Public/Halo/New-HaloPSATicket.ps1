@@ -131,6 +131,10 @@ function New-HaloPSATicket {
     $TicketType = $Configuration.TicketType.value ?? $Configuration.TicketType
     $object | Add-Member -MemberType NoteProperty -Name 'tickettype_id' -Value $TicketType -Force
   }
+  if ($Configuration.DefaultPriority) {
+    $Priority = $Configuration.DefaultPriority.value ?? $Configuration.DefaultPriority
+    $object | Add-Member -MemberType NoteProperty -Name 'priority_id' -Value ([int]$Priority) -Force
+  }
   #use the token to create a new ticket in HaloPSA
   $body = ConvertTo-Json -Compress -Depth 10 -InputObject @($Object)
 
